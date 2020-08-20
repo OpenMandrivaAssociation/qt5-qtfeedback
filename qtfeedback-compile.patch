@@ -1,0 +1,19 @@
+diff -up qtfeedback-master/src/imports/feedback/feedback.pro.omv~ qtfeedback-master/src/imports/feedback/feedback.pro
+--- qtfeedback-master/src/imports/feedback/feedback.pro.omv~	2020-08-20 02:22:36.353038637 +0200
++++ qtfeedback-master/src/imports/feedback/feedback.pro	2020-08-20 02:22:49.347161323 +0200
+@@ -13,4 +13,6 @@ SOURCES += qdeclarativehapticseffect.cpp
+            qdeclarativefeedbackactuator.cpp \
+            qdeclarativefeedbackeffect.cpp
+ 
++INCLUDEPATH += ../../feedback
++
+ load(qml_plugin)
+diff -up qtfeedback-master/src/plugins/feedback/mmk/mmk.pro.omv~ qtfeedback-master/src/plugins/feedback/mmk/mmk.pro
+--- qtfeedback-master/src/plugins/feedback/mmk/mmk.pro.omv~	2020-08-20 02:20:17.666728936 +0200
++++ qtfeedback-master/src/plugins/feedback/mmk/mmk.pro	2020-08-20 02:22:06.840759977 +0200
+@@ -6,3 +6,5 @@ load(qt_plugin)
+ 
+ HEADERS += qfeedback.h
+ SOURCES += qfeedback.cpp
++
++INCLUDEPATH += ../../../feedback
