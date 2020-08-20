@@ -11,6 +11,7 @@ Patch0:		qtfeedback-compile.patch
 BuildRequires:	cmake(Qt5Core)
 BuildRequires:	cmake(Qt5Gui)
 BuildRequires:	cmake(Qt5Qml)
+BuildRequires:	cmake(Qt5Multimedia)
 BuildRequires:	qmake5
 License:	LGPLv3
 
