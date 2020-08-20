@@ -10,6 +10,7 @@ Source:		https://github.com/qt/qtfeedback/archive/master.tar.gz
 Patch0:		qtfeedback-compile.patch
 BuildRequires:	cmake(Qt5Core)
 BuildRequires:	cmake(Qt5Gui)
+BuildRequires:	cmake(Qt5Qml)
 BuildRequires:	qmake5
 License:	LGPLv3
 
