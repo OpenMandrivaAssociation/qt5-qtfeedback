@@ -1,18 +1,19 @@
 %define date 20180903
 %define libname %mklibname Qt5Feedback 0
 %define devel %mklibname -d Qt5Feedback
+%global qtversion %(rpm -q --qf '%{VERSION}' qmake5)
 
 Summary:	Qt Tactile Feedback Add-on Module
 Name:		qt5-qtfeedback
 Version:	0.0.0
-Release:	%{?date:0.%{date}.}1
+Release:	%{?date:0.%{date}.}2
 Source:		https://github.com/qt/qtfeedback/archive/master.tar.gz
-Patch0:		qtfeedback-compile.patch
 BuildRequires:	cmake(Qt5Core)
 BuildRequires:	cmake(Qt5Gui)
 BuildRequires:	cmake(Qt5Qml)
 BuildRequires:	cmake(Qt5Multimedia)
 BuildRequires:	qmake5
+BuildRequires:	perl
 License:	LGPLv3
 
 %description
@@ -28,6 +29,7 @@ Development files for the Qt Tactile Feedback library
 
 %prep
 %autosetup -p1 -n qtfeedback-master
+perl %{_libdir}/qt5/bin/syncqt.pl -version %{qtversion}
 qmake-qt5
 
 %build
@@ -35,6 +37,8 @@ qmake-qt5
 
 %install
 %make_build install INSTALL_ROOT="%{buildroot}"
+# This file is bogus and breaks things by just being there
+rm -f %{buildroot}%{_libdir}/cmake/Qt5Feedback/Qt5Feedback_.cmake
 
 %libpackage Qt5Feedback 0
 
