@@ -1,0 +1,321 @@
+diff -up qtfeedback-master/src/plugins/feedback/evdev/evdev.json.1~ qtfeedback-master/src/plugins/feedback/evdev/evdev.json
+--- qtfeedback-master/src/plugins/feedback/evdev/evdev.json.1~	2020-09-01 22:47:05.886277649 +0200
++++ qtfeedback-master/src/plugins/feedback/evdev/evdev.json	2020-09-01 22:47:05.886277649 +0200
+@@ -0,0 +1 @@
++{ "Interfaces": [ "QFeedbackHapticsInterface" ] }
+diff -up qtfeedback-master/src/plugins/feedback/evdev/evdev.pro.1~ qtfeedback-master/src/plugins/feedback/evdev/evdev.pro
+--- qtfeedback-master/src/plugins/feedback/evdev/evdev.pro.1~	2020-09-01 22:47:05.886277649 +0200
++++ qtfeedback-master/src/plugins/feedback/evdev/evdev.pro	2020-09-01 22:47:05.886277649 +0200
+@@ -0,0 +1,8 @@
++TARGET = qtfeedback_evdev
++QT = core feedback
++
++PLUGIN_TYPE = feedback
++load(qt_plugin)
++
++HEADERS += qfeedback.h
++SOURCES += qfeedback.cpp
+diff -up qtfeedback-master/src/plugins/feedback/evdev/qfeedback.cpp.1~ qtfeedback-master/src/plugins/feedback/evdev/qfeedback.cpp
+--- qtfeedback-master/src/plugins/feedback/evdev/qfeedback.cpp.1~	2020-09-01 22:47:05.886277649 +0200
++++ qtfeedback-master/src/plugins/feedback/evdev/qfeedback.cpp	2020-09-01 23:27:40.657849236 +0200
+@@ -0,0 +1,203 @@
++/****************************************************************************
++**
++** Copyright (C) 2020 Bernhard Rosenkraenzer <bero@lindev.ch>
++** Contact: bero@lindev.ch
++**
++** $QT_BEGIN_LICENSE:LGPL$
++** GNU Lesser General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU Lesser
++** General Public License version 3 as published by the Free Software
++** Foundation and appearing in the file LICENSE.LGPL3 included in the
++** packaging of this file. Please review the following information to
++** ensure the GNU Lesser General Public License version 3 requirements
++** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
++**
++** GNU General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU
++** General Public License version 2.0 or (at your option) the GNU General
++** Public license version 3 or any later version approved by the KDE Free
++** Qt Foundation. The licenses are as published by the Free Software
++** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
++** included in the packaging of this file. Please review the following
++** information to ensure the GNU General Public License requirements will
++** be met: https://www.gnu.org/licenses/gpl-2.0.html and
++** https://www.gnu.org/licenses/gpl-3.0.html.
++**
++** $QT_END_LICENSE$
++**
++****************************************************************************/
++
++#include <qfeedbackactuator.h>
++#include "qfeedback.h"
++#include <QtCore/QtPlugin>
++#include <QtCore/QDir>
++#include <QtCore/QDebug>
++#include <QtCore/QStringList>
++#include <QtCore/QCoreApplication>
++#include <QtCore/QDir>
++#include <QtCore/QFile>
++#include <QtCore/QVariant>
++#include <QtCore/QTimer>
++#include <QDebug>
++
++extern "C" {
++#include <fcntl.h>
++#include <linux/input.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++}
++
++// simple bit field -- differing from std::bitset by allowing memset to work,
++// making it a much better tool for working with ioctl results
++template<size_t s> class BitField {
++public:
++	BitField() { memset(data, 0, sizeof(data)); }
++	operator void*() { return static_cast<void*>(&data); }
++	bool isSet(int bit) const {
++		return (data[(bit/8)]>>(bit%8))&1;
++	}
++	void set(int bit) {
++		data[(bit/8)] |= 1<<(bit%8);
++	}
++	void clear(int bit) {
++		data[(bit/8)] &= ~(1<<(bit%8));
++	}
++	bool operator[](int bit) const {
++		return isSet(bit);
++	}
++private:
++	uint8_t data[1+s/8];
++};
++
++QFeedbackEvdev::QFeedbackEvdev() {
++	QDir devinput("/dev/input");
++	for(QString const &dev : devinput.entryList(QStringList() << "event*", QDir::Readable|QDir::Writable|QDir::System|QDir::NoDotAndDotDot)) {
++		QString d("/dev/input/" + dev);
++		int fd = open(QFile::encodeName(d), O_RDWR);
++		if(fd < 0) // Skip an input device we don't have access to...
++			continue;
++
++		int effects;
++		if(ioctl(fd, EVIOCGEFFECTS, &effects) < 0) {
++			// Input device doesn't support any effects -- it's
++			// likely the keys or touchscreen, not the vibrator
++			// we're looking for
++			close(fd);
++			continue;
++		}
++
++		if(effects <= 0) {
++			// Input device doesn't support any effects -- it's
++			// likely the keys or touchscreen, not the vibrator
++			// we're looking for
++			close(fd);
++			continue;
++		}
++
++		BitField<FF_MAX> ffFeatures;
++		if(ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ffFeatures)), &ffFeatures) < 0) {
++			// Can't get the feedback support bits --> let's
++			// assume no feedback supported
++			close(fd);
++			continue;
++		}
++
++		if(ffFeatures.isSet(FF_GAIN)) {
++			// Set gain to 75%
++			input_event gain;
++			memset(&gain, 0, sizeof(gain));
++			gain.type = EV_FF;
++			gain.code = FF_GAIN;
++			gain.value = 0xc000; // 0x0 -> 0xffff
++			if(write(fd, &gain, sizeof(gain)) != sizeof(gain)) {
++				perror("Configure FF gain");
++				// Probably non-fatal
++			}
++		}
++
++		ff_effect effecttypes[1];
++		if(ffFeatures.isSet(FF_RUMBLE)) {
++			effecttypes[0].type = FF_RUMBLE;
++			effecttypes[0].id = -1;
++			effecttypes[0].u.rumble.strong_magnitude = 0xffff;
++			effecttypes[0].u.rumble.weak_magnitude = 0x0000;
++			effecttypes[0].replay.length = 250; // ms between start and auto-stop
++			effecttypes[0].replay.delay = 0; // ms between write() and start
++			ioctl(fd, EVIOCSFF, &effecttypes[0]);
++		}
++
++		_actuatorName.insert(fd, dev);
++		_actuatorBusy.insert(fd, false);
++		_actuatorEffect.insert(fd, effecttypes[0].id);
++		_actuatorEnabled.insert(fd, true);
++		_actuators.append(createFeedbackActuator(this, fd));
++	}
++}
++
++QFeedbackEvdev::~QFeedbackEvdev() {
++	for(QFeedbackActuator const *act : _actuators) {
++		close(act->id());
++	}
++}
++
++QList<QFeedbackActuator*> QFeedbackEvdev::actuators() {
++	return _actuators;
++}
++
++bool QFeedbackEvdev::isActuatorCapabilitySupported(const QFeedbackActuator &act, QFeedbackActuator::Capability cap) {
++	if(cap == QFeedbackActuator::Envelope || cap == QFeedbackActuator::Period)
++		return true;
++	return false;
++}
++
++
++void QFeedbackEvdev::setActuatorProperty(const QFeedbackActuator &act, ActuatorProperty p, const QVariant &v) {
++	switch(p) {
++	case Name:
++		_actuatorName[act.id()] = v.toString();
++		break;
++	case State:
++		_actuatorBusy[act.id()] = v.toInt();
++		break;
++	case Enabled:
++		_actuatorEnabled[act.id()] = v.toBool();
++		break;
++	}
++}
++
++QVariant QFeedbackEvdev::actuatorProperty(const QFeedbackActuator &act, ActuatorProperty p) {
++	switch(p) {
++	case Name:
++		return _actuatorName[act.id()];
++	case State:
++		return _actuatorBusy[act.id()] ? QFeedbackActuator::Busy : QFeedbackActuator::Ready;
++	case Enabled:
++		return _actuatorEnabled[act.id()];
++	};
++	return QVariant();
++}
++
++void QFeedbackEvdev::updateEffectProperty(const QFeedbackHapticsEffect *eff, EffectProperty prop) {
++	int fd = eff->actuator()->id();
++	// TODO implement
++	return;
++}
++
++void QFeedbackEvdev::setEffectState(const QFeedbackHapticsEffect *eff, QFeedbackEffect::State state) {
++	int fd = eff->actuator()->id();
++	input_event ev;
++	memset(&ev, 0, sizeof(ev));
++	ev.type = EV_FF;
++	ev.code = _actuatorEffect[fd];
++	switch(state) {
++	case QFeedbackEffect::Running:
++	case QFeedbackEffect::Stopped:
++		ev.value = (state == QFeedbackEffect::Running) ? 1 : 0;
++		write(fd, &ev, sizeof(ev));
++		// FIXME implement Paused
++	}
++}
++
++QFeedbackEffect::State QFeedbackEvdev::effectState(const QFeedbackHapticsEffect *eff) {
++	return QFeedbackEffect::Stopped;
++}
+diff -up qtfeedback-master/src/plugins/feedback/evdev/qfeedback.h.1~ qtfeedback-master/src/plugins/feedback/evdev/qfeedback.h
+--- qtfeedback-master/src/plugins/feedback/evdev/qfeedback.h.1~	2020-09-01 22:47:05.886277649 +0200
++++ qtfeedback-master/src/plugins/feedback/evdev/qfeedback.h	2020-09-01 23:26:01.017967512 +0200
+@@ -0,0 +1,79 @@
++/****************************************************************************
++**
++** Copyright (C) 2020 Bernhard Rosenkraenzer <bero@lindev.ch>
++** Contact: bero@lindev.ch
++**
++**
++** $QT_BEGIN_LICENSE:LGPL$
++** GNU Lesser General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU Lesser
++** General Public License version 3 as published by the Free Software
++** Foundation and appearing in the file LICENSE.LGPL3 included in the
++** packaging of this file. Please review the following information to
++** ensure the GNU Lesser General Public License version 3 requirements
++** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
++**
++** GNU General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU
++** General Public License version 2.0 or (at your option) the GNU General
++** Public license version 3 or any later version approved by the KDE Free
++** Qt Foundation. The licenses are as published by the Free Software
++** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
++** included in the packaging of this file. Please review the following
++** information to ensure the GNU General Public License requirements will
++** be met: https://www.gnu.org/licenses/gpl-2.0.html and
++** https://www.gnu.org/licenses/gpl-3.0.html.
++**
++** $QT_END_LICENSE$
++**
++****************************************************************************/
++
++#ifndef QFEEDBACK_EVDEV_H
++#define QFEEDBACK_EVDEV_H
++
++#include <QtCore/QList>
++#include <QtCore/QVector>
++#include <QtCore/QHash>
++#include <QtCore/QObject>
++#include <QtCore/QMutex>
++#include <QtCore/QTimer>
++
++#include <qfeedbackplugininterfaces.h>
++
++QT_BEGIN_HEADER
++QT_USE_NAMESPACE
++
++class QFeedbackEvdev : public QObject, public QFeedbackHapticsInterface
++{
++	Q_OBJECT
++	Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtFeedbackPlugin" FILE "evdev.json")
++
++	Q_INTERFACES(QFeedbackHapticsInterface)
++
++public:
++	QFeedbackEvdev();
++	virtual ~QFeedbackEvdev();
++
++	virtual PluginPriority pluginPriority() { return PluginHighPriority; }
++
++	virtual QList<QFeedbackActuator*> actuators();
++
++	virtual void setActuatorProperty(const QFeedbackActuator &, ActuatorProperty, const QVariant &);
++	virtual QVariant actuatorProperty(const QFeedbackActuator &, ActuatorProperty);
++	virtual bool isActuatorCapabilitySupported(const QFeedbackActuator &, QFeedbackActuator::Capability);
++
++	virtual void updateEffectProperty(const QFeedbackHapticsEffect *, EffectProperty);
++	virtual void setEffectState(const QFeedbackHapticsEffect *, QFeedbackEffect::State);
++	virtual QFeedbackEffect::State effectState(const QFeedbackHapticsEffect *);
++
++private:
++	QList<QFeedbackActuator*>		_actuators;
++	QHash<int,QString>			_actuatorName;
++	QHash<int,bool>				_actuatorBusy;
++	QHash<int,bool>				_actuatorEnabled;
++	QHash<int,int>				_actuatorEffect;
++};
++
++QT_END_HEADER
++
++#endif // QFEEDBACK_EVDEV_H
+diff -up qtfeedback-master/src/plugins/feedback/feedback.pro.1~ qtfeedback-master/src/plugins/feedback/feedback.pro
+--- qtfeedback-master/src/plugins/feedback/feedback.pro.1~	2018-09-03 11:16:11.000000000 +0200
++++ qtfeedback-master/src/plugins/feedback/feedback.pro	2020-09-01 22:47:05.886277649 +0200
+@@ -1,5 +1,10 @@
+ TEMPLATE = subdirs
+ 
++linux {
++    message("Building with evdev support")
++    SUBDIRS += evdev
++}
++
+ contains(immersion_enabled, yes) {
+     message("Building with Immersion TouchSense support")
+     SUBDIRS += immersion

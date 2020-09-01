@@ -6,8 +6,9 @@
 Summary:	Qt Tactile Feedback Add-on Module
 Name:		qt5-qtfeedback
 Version:	0.0.0
-Release:	%{?date:0.%{date}.}3
+Release:	%{?date:0.%{date}.}5
 Source:		https://github.com/qt/qtfeedback/archive/master.tar.gz
+Patch0:		qtfeedback-add-evdev-plugin.patch
 BuildRequires:	cmake(Qt5Core)
 BuildRequires:	cmake(Qt5Gui)
 BuildRequires:	cmake(Qt5Qml)
@@ -41,7 +42,7 @@ qmake-qt5
 # This file is bogus and breaks things by just being there
 rm -f %{buildroot}%{_libdir}/cmake/Qt5Feedback/Qt5Feedback_.cmake
 
-%libpackage Qt5Feedback 0
+%dependinglibpackage Qt5Feedback 0
 
 %files
 %{_libdir}/qt5/plugins/feedback
