@@ -1,4 +1,4 @@
-%define date 20180903
+%define date 20210927
 %define libname %mklibname Qt5Feedback 0
 %define devel %mklibname -d Qt5Feedback
 %global qtversion %(rpm -q --qf '%{VERSION}' qmake5)
@@ -7,7 +7,8 @@ Summary:	Qt Tactile Feedback Add-on Module
 Name:		qt5-qtfeedback
 Version:	0.0.0
 Release:	%{?date:0.%{date}.}5
-Source:		https://github.com/qt/qtfeedback/archive/master.tar.gz
+License:	LGPLv3
+Source:		https://github.com/qt/qtfeedback/archive/qtfeedback-master.tar.gz
 Patch0:		qtfeedback-add-evdev-plugin.patch
 BuildRequires:	cmake(Qt5Core)
 BuildRequires:	cmake(Qt5Gui)
@@ -15,10 +16,9 @@ BuildRequires:	cmake(Qt5Qml)
 BuildRequires:	cmake(Qt5Multimedia)
 BuildRequires:	qmake5
 BuildRequires:	perl
-License:	LGPLv3
 
 %description
-Qt Tactile Feedback Add-on Module
+Qt Tactile Feedback Add-on Module.
 
 %package -n %{devel}
 Summary:	Development files for the Qt Tactile Feedback library
@@ -27,7 +27,7 @@ Requires:	%{name} = %{EVRD}
 Requires:	%{libname} = %{EVRD}
 
 %description -n %{devel}
-Development files for the Qt Tactile Feedback library
+Development files for the Qt Tactile Feedback library.
 
 %prep
 %autosetup -p1 -n qtfeedback-master
