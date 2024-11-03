@@ -5,8 +5,8 @@
 
 Summary:	Qt Tactile Feedback Add-on Module
 Name:		qt5-qtfeedback
-Version:	0.0.0
-Release:	%{?date:0.%{date}.}9
+Version:	5.2.0
+Release:	%{?date:0.%{date}.}1
 License:	LGPLv3
 Source:		https://github.com/qt/qtfeedback/archive/qtfeedback-master.tar.gz
 Patch0:		qtfeedback-add-evdev-plugin.patch
